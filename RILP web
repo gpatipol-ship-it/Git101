@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RILP Show</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      color: #eee;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      letter-spacing: 0.1em;
+      margin-bottom: 16px;
+      color: #a8d8ea;
+      text-transform: uppercase;
+    }
+
+    #slide-container {
+      position: relative;
+      width: 100%;
+      max-width: 1280px;
+      background: #000;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    /* 16:9 aspect ratio */
+    #slide-container::before {
+      content: "";
+      display: block;
+      padding-top: 56.25%;
+    }
+
+    #slide-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #loading {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1rem;
+      color: #aaa;
+    }
+
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    button {
+      background: #16213e;
+      color: #a8d8ea;
+      border: 1px solid #a8d8ea44;
+      border-radius: 4px;
+      padding: 8px 20px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover:not(:disabled) { background: #0f3460; }
+    button:disabled { opacity: 0.3; cursor: default; }
+
+    #counter {
+      font-size: 1rem;
+      min-width: 80px;
+      text-align: center;
+      color: #ccc;
+    }
+
+    #fullscreen-btn {
+      margin-left: 8px;
+    }
+
+    #progress {
+      width: 100%;
+      max-width: 1280px;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      margin-top: 8px;
+    }
+
+    #progress-bar {
+      height: 100%;
+      background: #a8d8ea;
+      border-radius: 2px;
+      transition: width 0.2s;
+    }
+  </style>
+</head>
+<body>
+  <h1>RILP Show</h1>
+
+  <div id="slide-container">
+    <canvas id="slide-canvas"></canvas>
+    <div id="loading">Loading…</div>
+  </div>
+
+  <div id="progress"><div id="progress-bar" style="width:0%"></div></div>
+
+  <div id="controls">
+    <button id="prev-btn" disabled>&#8592; Prev</button>
+    <span id="counter">— / —</span>
+    <button id="next-btn" disabled>Next &#8594;</button>
+    <button id="fullscreen-btn" title="Fullscreen">&#x26F6;</button>
+  </div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pdfDoc = null;
+    let currentPage = 1;
+    let rendering = false;
+
+    const canvas = document.getElementById('slide-canvas');
+    const ctx = canvas.getContext('2d');
+    const loading = document.getElementById('loading');
+    const counter = document.getElementById('counter');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const progressBar = document.getElementById('progress-bar');
+    const container = document.getElementById('slide-container');
+
+    async function renderPage(num) {
+      if (rendering) return;
+      rendering = true;
+
+      const page = await pdfDoc.getPage(num);
+      const containerWidth = container.clientWidth;
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = containerWidth / viewport.width;
+      const scaled = page.getViewport({ scale });
+
+      canvas.width = scaled.width;
+      canvas.height = scaled.height;
+
+      await page.render({ canvasContext: ctx, viewport: scaled }).promise;
+
+      rendering = false;
+      loading.style.display = 'none';
+
+      counter.textContent = `${num} / ${pdfDoc.numPages}`;
+      progressBar.style.width = `${(num / pdfDoc.numPages) * 100}%`;
+      prevBtn.disabled = num <= 1;
+      nextBtn.disabled = num >= pdfDoc.numPages;
+    }
+
+    function go(delta) {
+      const next = currentPage + delta;
+      if (next < 1 || next > pdfDoc.numPages) return;
+      currentPage = next;
+      renderPage(currentPage);
+    }
+
+    prevBtn.addEventListener('click', () => go(-1));
+    nextBtn.addEventListener('click', () => go(1));
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') go(1);
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') go(-1);
+    });
+
+    document.getElementById('fullscreen-btn').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        container.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (pdfDoc) renderPage(currentPage);
+    });
+
+    pdfjsLib.getDocument('RILP.pdf').promise.then(doc => {
+      pdfDoc = doc;
+      renderPage(1);
+      nextBtn.disabled = doc.numPages <= 1;
+    }).catch(err => {
+      loading.textContent = 'Failed to load RILP.pdf: ' + err.message;
+    });
+  </script>
+</body>
+</html>
